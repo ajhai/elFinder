@@ -631,7 +631,7 @@ $.fn.elfindercwd = function(fm, options) {
 			 */
 			content = function(files, any) {
 				var phash = fm.cwd().hash; 
-				// console.log(files)
+				//console.log(files)
 				
 				unselectAll();
 				
@@ -879,7 +879,12 @@ $.fn.elfindercwd = function(fm, options) {
 			  	e.preventDefault();
 				wrapper.removeClass(clDropActive);
 
-				e.dataTransfer && e.dataTransfer.files &&  e.dataTransfer.files.length && fm.exec('upload', {files : e.dataTransfer.files})//fm.upload({files : e.dataTransfer.files});
+				if (fm.UA.Chrome && fm.browserVersion > 20) {
+				    e.dataTransfer && e.dataTransfer.items && e.dataTransfer.items.length && fm.exec('upload', {items : e.dataTransfer.items});
+				} else {
+				    e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length && fm.exec('upload', {files : e.dataTransfer.files});
+				}
+
 			}, false);
 		}
 

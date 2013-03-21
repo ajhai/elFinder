@@ -46,7 +46,7 @@ elFinder.prototype.commands.upload = function() {
 			return $.Deferred().reject();
 		}
 		
-		if (data && (data.input || data.files)) {
+		if (data && (data.input || data.files || data.items)) {
 			return fm.upload(data);
 		}
 		

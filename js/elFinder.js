@@ -192,7 +192,7 @@ window.elFinder = function(node, opts) {
 		 * @default 400
 		 **/
 		height = 400,
-				
+
 		beeper = $(document.createElement('audio')).hide().appendTo('body')[0],
 			
 		syncInterval,
@@ -336,6 +336,13 @@ window.elFinder = function(node, opts) {
 			Mobile:typeof window.orientation != "undefined"
 		}
 	})();
+
+	/*
+	 * Get chrome version. 0 for others
+	 *
+	 * @type Int
+	 */
+	this.browserVersion = this.UA.Chrome ?	parseInt(navigator.userAgent.match(/Chrom(e|ium)\/([0-9]+)\./)[2]) : 0;
 	
 	/**
 	 * Configuration options
@@ -1933,6 +1940,110 @@ elFinder.prototype = {
 
 	
 
+		/**
+		 * Start folder drop specific code
+		 */
+
+		/**
+		 * Files from folder drop
+		 */
+		filesDrop : [],
+
+		/**
+		 * Dirs from drop
+		 */
+		dirsDrop : [],
+
+		/**
+		 * Paths from folder drop
+		 */
+		paths : [],
+
+		/**
+		 * Dircount from folder drop
+		 */
+		dirCount : 0,
+
+		/**
+		 * Function to get the object name
+		 */
+		getFuncName : function(entry) {
+		    var funcNameRegex = /function (.{1,})\(/;
+		    var results =
+			(funcNameRegex).exec((entry).constructor.toString());
+		    return (results && results.length > 1) ? results[1] : "";
+		},
+
+		/**
+		 * Return list as array
+		 */
+		toArray : function(list) {
+		    return Array.prototype.slice.call(list || [], 0);
+		},
+
+		/**
+		 * Separate list of items into dirs and files filling paths
+		 */
+		separate : function(items, path) {
+		    for (var i = 0; i < items.length; i++) {
+
+			var isTransferItem = (this.getFuncName(items[i]) =='DataTransferItem') ? true : false;
+
+			var entry = isTransferItem ? items[i].webkitGetAsEntry() :  items[i];
+
+			if (entry.isFile) {
+			    if (isTransferItem) {
+				this.filesDrop.push(items[i].getAsFile());
+			    } else {
+				var fpush = function(f)	{this.filesDrop.push(f);};
+				fpush = $.proxy(fpush, this);
+				entry.file(fpush, null);
+			    }
+			    this.paths.push(path);
+			} else {
+			    this.dirCount++;
+			    this.dirsDrop.push(entry);
+			}
+		    }
+		},
+
+		/**
+		 * Entry function to folder drop
+		 */
+		processDrop : function(items, path) {
+		    var dir;
+		    this.separate(items, path);
+
+		    while ((dir = this.dirsDrop.pop()) != null) {
+			this.readDir(dir, path);
+		    }
+		},
+
+		/**
+		 * Read directory and list the entries
+		 */
+		readDir : function(dir, path) {
+		    var dirReader = dir.createReader();
+		    var dirItems = new Array();
+		    var readDirEntries = function(context) {
+			dirReader.readEntries(function(results) {
+				if (!results.length) {
+				    context.processDrop(dirItems, path + dir.name + '/');
+				    context.dirCount--;
+				} else {
+				    dirItems =
+				    dirItems.concat(Array.prototype.slice.call(results || [], 0));
+				    readDirEntries(context);
+				}
+			    }, null);
+		    };
+		    readDirEntries(this);
+		},
+
+		/**
+		 * End folder drop specific code
+		 */
+
 	
 	/**
 	 * Commands costructors
@@ -2073,7 +2184,7 @@ elFinder.prototype = {
 					}),
 				xhr         = new XMLHttpRequest(),
 				formData    = new FormData(),
-				files       = data.input ? data.input.files : data.files, 
+				files       = data.input ? data.input.files : (data.items ? data.items : data.files), 
 				cnt         = files.length,
 				loaded      = 5,
 				notify      = false,
@@ -2140,10 +2251,15 @@ elFinder.prototype = {
 					}
 				}
 			}, false);
-			
-			
+
+			if (data.items) {
+			    self.filesDrop = [];
+			    self.paths = [];
+			    self.dirsDrop = [];
+			    self.processDrop(data.items, '/'); 
+			}
+
 			xhr.open('POST', self.uploadURL, true);
-			formData.append('cmd', 'upload');
 			formData.append(self.newAPI ? 'target' : 'current', self.cwd().hash);
 			$.each(self.options.customData, function(key, val) {
 				formData.append(key, val);
@@ -2151,11 +2267,25 @@ elFinder.prototype = {
 			$.each(self.options.onlyMimes, function(i, mime) {
 				formData.append('mimes['+i+']', mime);
 			});
-			
-			$.each(files, function(i, file) {
+
+			if (data.items) {
+			    var timer = setInterval(function() {
+				if (self.dirCount == 0) {
+				    formData.append('cmd', 'uploadDir');
+				    formData.append('paths', self.paths);
+				    $.each(self.filesDrop, function(i, file) {
+					formData.append('upload[]', file);
+				    });
+				    clearInterval(timer);
+				}
+			    }, 100);
+			} else {
+			    formData.append('cmd', 'upload');
+			    $.each(files, function(i, file) {
 				formData.append('upload[]', file);
-			});
-			
+			    });
+			}
+
 			xhr.onreadystatechange = function() {
 				if (xhr.readyState == 4 && xhr.status == 0) {
 					// ff bug while send zero sized file
@@ -2163,8 +2293,17 @@ elFinder.prototype = {
 					dfrd.reject(['errConnect', 'errAbort']);
 				}
 			}
-			
-			xhr.send(formData);
+
+			if (data.items) {
+			    var sendTimer = setInterval(function() {
+				if (self.dirCount == 0) {
+				    xhr.send(formData);
+				    clearInterval(sendTimer);
+				}
+			    }, 100);
+			} else {
+			    xhr.send(formData);
+			}
 
 			if (!this.UA.Safari || !data.files) {
 				notifyto = startNotify();
