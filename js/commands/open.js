@@ -79,7 +79,9 @@ elFinder.prototype.commands.open = function() {
 				w = 'width='+parseInt(2*$(window).width()/3)+',height='+parseInt(2*$(window).height()/3);
 			}
 
-			if (!window.open(url, '_blank', w + ',top=50,left=50,scrollbars=yes,resizable=yes')) {
+			if (file.mime.indexOf("image/") === 0 || file.mime.indexOf("audio/") === 0 || file.mime.indexOf("video/") === 0) {
+				fm.exec('quicklook', this.id);
+			} else if (!window.open(url, '_blank', w + ',top=50,left=50,scrollbars=yes,resizable=yes')) {
 				return dfrd.reject('errPopup');
 			}
 		}
